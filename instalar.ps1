@@ -1,81 +1,124 @@
-﻿# Instala Cortes en otro PC con Windows para poder publicarlo desde ahí (mismo link fijo).
-# Uso, en PowerShell (Windows + R → powershell):
-#   irm https://brayannpilli.github.io/cortes/instalar.ps1 -OutFile "$env:TEMP\instalar-cortes.ps1"
-#   powershell -ExecutionPolicy Bypass -File "$env:TEMP\instalar-cortes.ps1"
-# Opcional: CORTES_DEST cambia la carpeta y CORTES_SIN_PREGUNTAS=1 no pide la clave ni crea el acceso directo (pruebas).
-# Se puede volver a ejecutar: salta lo que ya está instalado y actualiza la app.
-# Continue: en Windows PowerShell 5.1, "Stop" convierte en error cualquier aviso que un programa escriba por stderr.
+# Instala (o actualiza) Cortes en cualquier PC con Windows. No necesita cuenta de GitHub.
+# Una sola linea en PowerShell:
+#   irm https://brayannpilli.github.io/cortes/instalar.ps1 | iex
+# Pide solo el codigo de instalacion (lo eligio quien publica Cortes). Se puede volver a ejecutar para actualizar.
+# Este archivo va sin acentos a proposito: asi funciona igual al pegarlo con irm | iex.
+# Opcional: CORTES_DEST cambia la carpeta; CORTES_CODIGO y CORTES_PAQUETE sirven para pruebas sin preguntas.
 $ErrorActionPreference = "Continue"
-$Repo = "brayannpilli/virocut-clon"
+$Paquete = if ($env:CORTES_PAQUETE) { $env:CORTES_PAQUETE } else { "https://raw.githubusercontent.com/brayannpilli/cortes/main/paquete.bin" }
 $Dest = if ($env:CORTES_DEST) { $env:CORTES_DEST } else { Join-Path ([Environment]::GetFolderPath("Desktop")) "Cortes" }
-$SinPreguntas = $env:CORTES_SIN_PREGUNTAS -eq "1"
+$Prueba = [bool]$env:CORTES_CODIGO
+$Guardado = Join-Path $env:LOCALAPPDATA "Cortes\codigo.bin"
 
 function Paso($t) { Write-Host ""; Write-Host "== $t" -ForegroundColor Cyan }
-function Refrescar-Path {
-  $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-}
-function Tiene($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
+function Refrescar-Path { $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User") }
+function Tiene($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 function Instalar($id, $cmd) {
-  if ($cmd -and (Tiene $cmd)) { Write-Host "  $id ya está."; return }
+  if ($cmd -and (Tiene $cmd)) { Write-Host "  $id ya esta."; return }
   Write-Host "  Instalando $id..."
   winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
   Refrescar-Path
 }
 
-if (-not (Tiene "winget")) { Write-Host "Falta winget (App Installer de Microsoft Store). Instálalo y vuelve a ejecutar."; return }
+function Unprotect-Bytes([byte[]]$b, [string]$pass) {
+  if ($b.Length -lt 7 + 16 + 16 + 16 + 32 -or [Text.Encoding]::ASCII.GetString($b, 0, 7) -ne "CORTES1") { throw "paquete no valido" }
+  $salt = $b[7..22]; $iv = $b[23..38]
+  $kdf = New-Object Security.Cryptography.Rfc2898DeriveBytes($pass, [byte[]]$salt, 300000, [Security.Cryptography.HashAlgorithmName]::SHA256)
+  $k = $kdf.GetBytes(64)
+  $hmac = New-Object Security.Cryptography.HMACSHA256(, [byte[]]$k[32..63])
+  $tag = $hmac.ComputeHash($b, 0, $b.Length - 32)
+  $diff = 0
+  for ($i = 0; $i -lt 32; $i++) { $diff = $diff -bor ($tag[$i] -bxor $b[$b.Length - 32 + $i]) }
+  if ($diff -ne 0) { return $null }  # codigo incorrecto
+  $aes = [Security.Cryptography.Aes]::Create()
+  $aes.Key = [byte[]]$k[0..31]; $aes.IV = [byte[]]$iv
+  return , $aes.CreateDecryptor().TransformFinalBlock($b, 39, $b.Length - 39 - 32)
+}
 
-Paso "Programas (Git, GitHub CLI, Node, Python, ffmpeg, Cloudflare)"
-Instalar "Git.Git" "git"
-Instalar "GitHub.cli" "gh"
+if (-not (Tiene "winget")) { Write-Host "Falta winget (App Installer de Microsoft Store). Instalalo y vuelve a ejecutar."; return }
+
+Paso "Programas (Node, Python, ffmpeg, Cloudflare)"
 Instalar "OpenJS.NodeJS.LTS" "node"
 Instalar "Python.Python.3.13" "py"
 Instalar "Gyan.FFmpeg" "ffmpeg"
-if (-not (Test-Path "C:\Program Files (x86)\cloudflared\cloudflared.exe")) { Instalar "Cloudflare.cloudflared" $null } else { Write-Host "  Cloudflare.cloudflared ya está." }
+if (Test-Path "C:\Program Files (x86)\cloudflared\cloudflared.exe") { Write-Host "  Cloudflare.cloudflared ya esta." } else { Instalar "Cloudflare.cloudflared" $null }
 Refrescar-Path
-foreach ($c in "git", "gh", "node", "npm", "py", "ffmpeg") {
-  if (-not (Tiene $c)) { Write-Host "No se encontró '$c' tras instalar. Cierra esta ventana, abre una nueva y vuelve a ejecutar." -ForegroundColor Red; return }
+foreach ($c in "node", "npm", "py", "ffmpeg") {
+  if (-not (Tiene $c)) { Write-Host "No se encontro '$c' tras instalar. Cierra PowerShell, abre uno nuevo y vuelve a pegar la linea." -ForegroundColor Red; return }
 }
 
-Paso "Cuenta de GitHub (para bajar la app y actualizar el link fijo)"
-gh auth status 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "  Se abrirá el navegador: entra con la cuenta brayannpilli y autoriza."
-  gh auth login --hostname github.com --git-protocol https --web
-  if ($LASTEXITCODE -ne 0) { Write-Host "No se completó el inicio de sesión en GitHub." -ForegroundColor Red; return }
+Paso "Paquete de Cortes"
+$tmp = Join-Path $env:TEMP "cortes-instalar"
+Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory $tmp | Out-Null
+$bin = Join-Path $tmp "paquete.bin"
+if ($Paquete -match "^https?://") { Invoke-WebRequest -UseBasicParsing -Uri $Paquete -OutFile $bin } else { Copy-Item $Paquete $bin }
+$bytes = [IO.File]::ReadAllBytes($bin)
+
+$zip = $null
+for ($intento = 0; $intento -lt 3 -and -not $zip; $intento++) {
+  if ($Prueba) { $codigo = $env:CORTES_CODIGO }
+  elseif ($intento -eq 0 -and (Test-Path $Guardado)) {
+    $ss = Get-Content $Guardado | ConvertTo-SecureString
+    $codigo = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss))
+  } else {
+    $ss = Read-Host "  Codigo de instalacion" -AsSecureString
+    $codigo = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss))
+  }
+  Write-Host "  Abriendo el paquete..."
+  $zip = Unprotect-Bytes $bytes $codigo
+  if (-not $zip) { Write-Host "  Codigo incorrecto." -ForegroundColor Yellow; if ($Prueba) { break } }
 }
-gh auth setup-git | Out-Null
+if (-not $zip) { Write-Host "No se pudo abrir el paquete. Pide el codigo a quien publica Cortes." -ForegroundColor Red; return }
+if (-not $Prueba) {
+  # Se guarda cifrado para este usuario de Windows (DPAPI): las actualizaciones no lo vuelven a pedir.
+  New-Item -ItemType Directory -Force (Split-Path $Guardado) | Out-Null
+  ConvertTo-SecureString $codigo -AsPlainText -Force | ConvertFrom-SecureString | Set-Content $Guardado
+}
 
 Paso "App en $Dest"
-if (Test-Path (Join-Path $Dest ".git")) {
-  git -C $Dest pull --ff-only
-} else {
-  gh repo clone $Repo $Dest
-}
+$zipFile = Join-Path $tmp "app.zip"
+[IO.File]::WriteAllBytes($zipFile, $zip)
+$app = Join-Path $tmp "app"
+Expand-Archive -Path $zipFile -DestinationPath $app -Force
+$secretos = Get-Content (Join-Path $app "secretos.json") -Raw | ConvertFrom-Json
+Remove-Item (Join-Path $app "secretos.json")
+New-Item -ItemType Directory -Force $Dest | Out-Null
+# Se copia encima: se conservan data\ (videos, clips) y node_modules\.
+Copy-Item -Path (Join-Path $app "*") -Destination $Dest -Recurse -Force
 Set-Location $Dest
+Write-Host "  Version $($secretos.version)"
+
+Paso "Claves"
+if (-not (Test-Path ".env")) { Copy-Item ".env.example" ".env" }
+$lines = @(Get-Content ".env")
+foreach ($kv in @(@("GEMINI_API_KEY", $secretos.gemini), @("GROQ_API_KEY", $secretos.groq))) {
+  if ($lines -match "^$($kv[0])=") { $lines = $lines -replace "^$($kv[0])=.*", "$($kv[0])=$($kv[1])" } else { $lines += "$($kv[0])=$($kv[1])" }
+}
+[IO.File]::WriteAllLines((Join-Path $Dest ".env"), $lines, (New-Object Text.UTF8Encoding $false))
+New-Item -ItemType Directory -Force (Join-Path $Dest "data") | Out-Null
+@{ repo = $secretos.linkRepo; token = $secretos.linkToken } | ConvertTo-Json | Set-Content (Join-Path $Dest "data\link-token.json") -Encoding ascii
+Write-Host "  Gemini: $(if ($secretos.gemini) { 'si' } else { 'no' })   Groq: $(if ($secretos.groq) { 'si' } else { 'no' })"
 
 Paso "Paquetes de Python (yt-dlp, Whisper, OpenCV)"
-py -3 -m pip install --user -q -U yt-dlp faster-whisper "opencv-python-headless<5"
+py -3 -m pip install --user -q -U yt-dlp faster-whisper "opencv-python-headless<5" 2>$null
 
 Paso "Paquetes de Node"
-npm ci --no-audit --no-fund
+npm ci --no-audit --no-fund --loglevel=error
 
-Paso "Configuración (.env)"
-if (-not (Test-Path ".env")) {
-  Copy-Item ".env.example" ".env"
-  $key = if ($SinPreguntas) { "" } else { Read-Host "  Pega tu clave de Gemini (Enter para seguir sin IA)" }
-  if ($key.Trim()) { (Get-Content ".env") -replace '^GEMINI_API_KEY=.*', "GEMINI_API_KEY=$($key.Trim())" | Set-Content ".env" -Encoding utf8 }
-} else { Write-Host "  .env ya existe; se deja como está." }
-
-if (-not $SinPreguntas) {
-Paso "Acceso directo en el escritorio"
-$lnk = Join-Path ([Environment]::GetFolderPath("Desktop")) "Cortes en línea.lnk"
-$sh = New-Object -ComObject WScript.Shell
-$s = $sh.CreateShortcut($lnk)
-$s.TargetPath = Join-Path $Dest "Cortes en linea.cmd"
-$s.WorkingDirectory = $Dest
-$s.Save()
+if (-not $Prueba) {
+  Paso "Accesos directos en el escritorio"
+  $desk = [Environment]::GetFolderPath("Desktop")
+  $sh = New-Object -ComObject WScript.Shell
+  $s = $sh.CreateShortcut((Join-Path $desk "Cortes en linea.lnk"))
+  $s.TargetPath = Join-Path $Dest "Cortes en linea.cmd"; $s.WorkingDirectory = $Dest; $s.Save()
+  $s = $sh.CreateShortcut((Join-Path $desk "Actualizar Cortes.lnk"))
+  $s.TargetPath = "powershell.exe"
+  $s.Arguments = '-NoProfile -ExecutionPolicy Bypass -Command "irm https://brayannpilli.github.io/cortes/instalar.ps1 | iex; Read-Host ''Enter para cerrar''"'
+  $s.Save()
 }
+Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "Listo. Doble clic en «Cortes en línea» del escritorio para publicar la app desde este PC." -ForegroundColor Green
-Write-Host "El link fijo https://brayannpilli.github.io/cortes pasará a apuntar a este equipo."
+Write-Host "Listo. Doble clic en 'Cortes en linea' del escritorio para publicar la app desde este PC." -ForegroundColor Green
+Write-Host "El link fijo https://brayannpilli.github.io/cortes pasara a apuntar a este equipo."
