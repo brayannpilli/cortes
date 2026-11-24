@@ -107,6 +107,19 @@ Paso "Paquetes de Node"
 npm ci --no-audit --no-fund --loglevel=error
 
 if (-not $Prueba) {
+  Paso "IA local opcional (Ollama)"
+  if (Tiene "ollama") { Write-Host "  Ollama ya esta." }
+  else {
+    Write-Host "  Ollama es un respaldo gratis cuando Gemini esta saturado. Descarga unos 3,7 GB (programa + modelo qwen3:4b)."
+    $r = Read-Host "  Instalar Ollama? (s/N)"
+    if ($r -match "^[sSyY]") {
+      Instalar "Ollama.Ollama" "ollama"
+      if (Tiene "ollama") { Write-Host "  Descargando el modelo qwen3:4b..."; ollama pull qwen3:4b }
+    }
+  }
+}
+
+if (-not $Prueba) {
   Paso "Accesos directos en el escritorio"
   $desk = [Environment]::GetFolderPath("Desktop")
   $sh = New-Object -ComObject WScript.Shell

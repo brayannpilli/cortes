@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Cortes</title>
+<title>Cortes Clips</title>
+<link rel="icon" type="image/png" href="favicon.png">
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: #0f0f10; color: #f2f2f2;
          font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 26rem; padding: 2rem; text-align: center; }
-  .logo { width: 3rem; height: 3rem; margin: 0 auto 1rem; border-radius: .75rem; background: #f68c36; display: grid; place-items: center; font-size: 1.5rem; }
+  .logo { width: 5rem; height: 5rem; margin: 0 auto 1rem; border-radius: 50%; display: block; }
   h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
   p { color: #a1a1aa; margin: 0 0 1rem; }
   button { font: inherit; padding: .6rem 1.2rem; border: 0; border-radius: 999px; background: #f68c36; color: #111; font-weight: 600; cursor: pointer; }
@@ -20,8 +21,8 @@
 </head>
 <body>
 <main>
-  <div class="logo" aria-hidden="true">✂</div>
-  <h1 id="titulo">Abriendo Cortes…</h1>
+  <img class="logo" src="logo.png" alt="" aria-hidden="true">
+  <h1 id="titulo">Abriendo Cortes Clips…</h1>
   <p id="texto">Buscando el link vigente.</p>
   <div id="spin" class="spin" aria-hidden="true"></div>
   <button id="otra" hidden>Probar de nuevo</button>
@@ -35,7 +36,7 @@ const spin = document.getElementById("spin"), otra = document.getElementById("ot
 otra.onclick = () => location.reload();
 
 function apagada(msg) {
-  titulo.textContent = "Cortes está apagado";
+  titulo.textContent = "Cortes Clips está apagado";
   texto.textContent = msg;
   spin.hidden = true;
   otra.hidden = false;
