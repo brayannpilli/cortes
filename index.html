@@ -25,6 +25,7 @@
   <p id="texto">Buscando el link vigente.</p>
   <div id="spin" class="spin" aria-hidden="true"></div>
   <button id="otra" hidden>Probar de nuevo</button>
+  <p id="ayuda" hidden style="margin-top:1rem;font-size:.875rem"><a href="https://github.com/brayannpilli/cortes#publicarla-desde-otro-pc-windows" style="color:#f68c36">Cómo publicarla desde otro PC</a></p>
 </main>
 <script>
 // El PC que publica Cortes cambia de link cada vez que reabre el túnel y lo guarda en link.json.
@@ -38,6 +39,7 @@ function apagada(msg) {
   texto.textContent = msg;
   spin.hidden = true;
   otra.hidden = false;
+  document.getElementById("ayuda").hidden = false;
 }
 
 async function abrir() {
@@ -54,7 +56,7 @@ async function abrir() {
     clearTimeout(t);
     location.replace(url + location.hash);
   } catch {
-    apagada("El equipo que la publica no está conectado ahora mismo. Cuando se abra «Cortes en linea» en ese PC, vuelve a cargar esta página.");
+    apagada("El equipo que la publica no está conectado. Abre «Cortes en línea» en ese PC u otro (instrucciones abajo) y vuelve a cargar esta página.");
   }
 }
 abrir();
