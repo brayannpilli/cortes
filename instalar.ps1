@@ -84,6 +84,11 @@ Expand-Archive -Path $zipFile -DestinationPath $app -Force
 $secretos = Get-Content (Join-Path $app "secretos.json") -Raw | ConvertFrom-Json
 Remove-Item (Join-Path $app "secretos.json")
 New-Item -ItemType Directory -Force $Dest | Out-Null
+# Si Cortes esta encendido en segundo plano, se apaga antes de actualizar (luego se vuelve a abrir).
+if (-not $Prueba -and (Test-Path (Join-Path $Dest "data\en-linea.pid")) -and (Test-Path (Join-Path $Dest "scripts\apagar.ps1"))) {
+  Write-Host "  Apagando Cortes para actualizarlo..."
+  & (Join-Path $Dest "scripts\apagar.ps1")
+}
 # Se copia encima: se conservan data\ (videos, clips) y node_modules\.
 Copy-Item -Path (Join-Path $app "*") -Destination $Dest -Recurse -Force
 Set-Location $Dest
@@ -126,11 +131,11 @@ if (-not $Prueba) {
 }
 
 if (-not $Prueba) {
-  Paso "Accesos directos en el escritorio"
+  Paso "Accesos directos (escritorio y arranque con Windows)"
   $desk = [Environment]::GetFolderPath("Desktop")
   $sh = New-Object -ComObject WScript.Shell
-  $s = $sh.CreateShortcut((Join-Path $desk "Cortes en linea.lnk"))
-  $s.TargetPath = Join-Path $Dest "Cortes en linea.cmd"; $s.WorkingDirectory = $Dest; $s.Save()
+  # Cortes en linea (sin ventana), Apagar Cortes y arranque oculto al iniciar sesion.
+  & (Join-Path $Dest "scripts\accesos.ps1")
   $s = $sh.CreateShortcut((Join-Path $desk "Actualizar Cortes.lnk"))
   $s.TargetPath = "powershell.exe"
   $s.Arguments = '-NoProfile -ExecutionPolicy Bypass -Command "irm https://brayannpilli.github.io/cortes/instalar.ps1 | iex; Read-Host ''Enter para cerrar''"'
@@ -139,5 +144,6 @@ if (-not $Prueba) {
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ""
-Write-Host "Listo. Doble clic en 'Cortes en linea' del escritorio para publicar la app desde este PC." -ForegroundColor Green
-Write-Host "El link fijo https://brayannpilli.github.io/cortes pasara a apuntar a este equipo."
+Write-Host "Listo. Cortes funciona sin ventana y arranca solo al iniciar Windows." -ForegroundColor Green
+Write-Host "Para apagarlo: 'Apagar Cortes' en el escritorio. Para encenderlo: 'Cortes en linea'."
+Write-Host "Link fijo: https://brayannpilli.github.io/cortes"
