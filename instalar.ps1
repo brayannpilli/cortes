@@ -97,13 +97,14 @@ Write-Host "  Version $($secretos.version)"
 Paso "Claves"
 if (-not (Test-Path ".env")) { Copy-Item ".env.example" ".env" }
 $lines = @(Get-Content ".env")
-foreach ($kv in @(@("GEMINI_API_KEY", $secretos.gemini), @("GROQ_API_KEY", $secretos.groq))) {
+# HF_BIBLIOTECA_*: biblioteca en la nube (los mismos videos en todos los PCs).
+foreach ($kv in @(@("GEMINI_API_KEY", $secretos.gemini), @("GROQ_API_KEY", $secretos.groq), @("HF_BIBLIOTECA_TOKEN", $secretos.hfToken), @("HF_BIBLIOTECA_REPO", $secretos.hfRepo))) {
   if ($lines -match "^$($kv[0])=") { $lines = $lines -replace "^$($kv[0])=.*", "$($kv[0])=$($kv[1])" } else { $lines += "$($kv[0])=$($kv[1])" }
 }
 [IO.File]::WriteAllLines((Join-Path $Dest ".env"), $lines, (New-Object Text.UTF8Encoding $false))
 New-Item -ItemType Directory -Force (Join-Path $Dest "data") | Out-Null
 @{ repo = $secretos.linkRepo; token = $secretos.linkToken } | ConvertTo-Json | Set-Content (Join-Path $Dest "data\link-token.json") -Encoding ascii
-Write-Host "  Gemini: $(if ($secretos.gemini) { 'si' } else { 'no' })   Groq: $(if ($secretos.groq) { 'si' } else { 'no' })"
+Write-Host "  Gemini: $(if ($secretos.gemini) { 'si' } else { 'no' })   Groq: $(if ($secretos.groq) { 'si' } else { 'no' })   Nube: $(if ($secretos.hfToken) { 'si' } else { 'no' })"
 
 Paso "Paquetes de Python (yt-dlp, Whisper, OpenCV)"
 py -3 -m pip install --user -q -U yt-dlp faster-whisper "opencv-python-headless<5" 2>$null
