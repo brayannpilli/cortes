@@ -104,7 +104,13 @@ Paso "Paquetes de Python (yt-dlp, Whisper, OpenCV)"
 py -3 -m pip install --user -q -U yt-dlp faster-whisper "opencv-python-headless<5" 2>$null
 
 Paso "Paquetes de Node"
-npm ci --no-audit --no-fund --loglevel=error
+# npm.cmd y no npm: en equipos con scripts bloqueados (ExecutionPolicy) npm.ps1 no se puede ejecutar.
+npm.cmd ci --no-audit --no-fund --loglevel=error
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $Dest "node_modules\.bin\tsc.cmd"))) {
+  Write-Host "  Reintentando la instalacion de paquetes de Node..." -ForegroundColor Yellow
+  npm.cmd install --no-audit --no-fund --loglevel=error
+  if ($LASTEXITCODE -ne 0) { Write-Host "No se pudieron instalar los paquetes de Node. Revisa la conexion y vuelve a pegar la linea." -ForegroundColor Red; return }
+}
 
 if (-not $Prueba) {
   Paso "IA local opcional (Ollama)"
