@@ -84,10 +84,26 @@ Expand-Archive -Path $zipFile -DestinationPath $app -Force
 $secretos = Get-Content (Join-Path $app "secretos.json") -Raw | ConvertFrom-Json
 Remove-Item (Join-Path $app "secretos.json")
 New-Item -ItemType Directory -Force $Dest | Out-Null
-# Si Cortes esta encendido en segundo plano, se apaga antes de actualizar (luego se vuelve a abrir).
-if (-not $Prueba -and (Test-Path (Join-Path $Dest "data\en-linea.pid")) -and (Test-Path (Join-Path $Dest "scripts\apagar.ps1"))) {
-  Write-Host "  Apagando Cortes para actualizarlo..."
-  & (Join-Path $Dest "scripts\apagar.ps1")
+# Cortes encendido (sin ventana o la version vieja con ventana): se apaga antes de actualizar, si no
+# sigue corriendo el codigo viejo y bloquea archivos (EPERM en esbuild.exe). Al final se vuelve a encender.
+if (-not $Prueba) {
+  $estaba = $false
+  if ((Test-Path (Join-Path $Dest "data\en-linea.pid")) -and (Test-Path (Join-Path $Dest "scripts\apagar.ps1"))) {
+    Write-Host "  Apagando Cortes para actualizarlo..."
+    & (Join-Path $Dest "scripts\apagar.ps1")
+    $estaba = $true
+  }
+  $resto = @(Get-CimInstance Win32_Process | Where-Object {
+    $_.ProcessId -ne $PID -and $_.CommandLine -and $_.Name -match '^(node|esbuild|cloudflared|powershell|pwsh|cmd|python|py)\.exe$' -and (
+      $_.CommandLine.Contains($Dest) -or ($_.Name -eq "cloudflared.exe" -and $_.CommandLine -match "127\.0\.0\.1:4417"))
+  })
+  if ($resto.Count) {
+    Write-Host "  Cerrando la version anterior de Cortes ($($resto.Count) procesos)..."
+    foreach ($p in $resto) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+    $estaba = $true
+  }
+  Remove-Item (Join-Path $Dest "data\en-linea.pid"), (Join-Path $Dest "data\apagar.flag") -ErrorAction SilentlyContinue
 }
 # Se copia encima: se conservan data\ (videos, clips) y node_modules\.
 Copy-Item -Path (Join-Path $app "*") -Destination $Dest -Recurse -Force
@@ -143,6 +159,14 @@ if (-not $Prueba) {
   $s.Save()
 }
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+
+if (-not $Prueba) {
+  # Se enciende ya con la version nueva (sin ventana); al estar listo abre el link fijo en el navegador.
+  Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$(Join-Path $Dest 'scripts\en-linea.ps1')`" -Oculto"
+  Write-Host ""
+  Write-Host "Encendiendo Cortes... en 1-2 minutos se abre el link en el navegador." -ForegroundColor Cyan
+  Write-Host "Tus videos de la nube se bajan solos en segundo plano (la primera vez tarda unos minutos)."
+}
 
 Write-Host ""
 Write-Host "Listo. Cortes funciona sin ventana y arranca solo al iniciar Windows." -ForegroundColor Green
